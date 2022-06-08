@@ -1,0 +1,11 @@
+Manifest-Version: 1.0
+Main-Class: br.app.mastersofthouse.report.App
+Class-Path: ecj-3.21.0.jar jcommon-1.0.23.jar itext-2.1.7.js9.jar stax2-
+ api-4.2.1.jar argparse4j-0.9.0.jar commons-io-2.11.0.jar jfreechart-1.0
+ .19.jar bcprov-jdk15on-1.68.jar jackson-core-2.13.1.jar woodstox-core-6
+ .2.7.jar commons-digester-2.1.jar commons-lang3-3.12.0.jar jasperreport
+ s-6.19.1.jar commons-logging-1.1.1.jar commons-beanutils-1.9.4.jar jack
+ son-databind-2.13.1.jar commons-collections4-4.2.jar commons-collection
+ s-3.2.2.jar jackson-annotations-2.13.1.jar jackson-dataformat-xml-2.13.
+ 1.jar jasperreports-functions-6.19.1.jar
+

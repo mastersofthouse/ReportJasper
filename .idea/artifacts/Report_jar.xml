@@ -1,0 +1,11 @@
+<component name="ArtifactManager">
+  <artifact build-on-make="true" name="Report:jar">
+    <output-path>$PROJECT_DIR$/out/artifacts/Report_jar/lib</output-path>
+    <root id="root">
+      <element id="archive" name="Report.jar">
+        <element id="module-output" name="Report" />
+      </element>
+      <element id="library" level="project" name="lib" />
+    </root>
+  </artifact>
+</component>

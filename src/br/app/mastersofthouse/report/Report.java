@@ -21,7 +21,6 @@ import net.sf.jasperreports.engine.util.JRSaver;
 import net.sf.jasperreports.engine.xml.JRXmlLoader;
 import net.sf.jasperreports.export.*;
 import net.sf.jasperreports.view.JasperViewer;
-import org.apache.commons.io.FilenameUtils;
 import org.apache.commons.lang3.LocaleUtils;
 
 import javax.print.PrintService;
@@ -38,8 +37,8 @@ import java.sql.Connection;
 import java.sql.SQLException;
 import java.text.DateFormat;
 import java.text.SimpleDateFormat;
-import java.util.*;
 import java.util.List;
+import java.util.*;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 
@@ -47,54 +46,76 @@ public class Report {
 
     private Config config;
     private File inputFile;
-    private Locale defaultLocale;
-    private static PrintStream configSink = System.err;
-    private static PrintStream debugSink = System.err;
+    private InputType initialInputType;
     private JasperDesign jasperDesign;
     private JasperReport jasperReport;
     private JasperPrint jasperPrint;
-    private InputType initialInputType;
     private File output;
-
+    private Locale defaultLocale;
     private static final String STDOUT = "-";
+    private static PrintStream configSink = System.err;
+    private static PrintStream debugSink = System.err;
+
 
     public Report(Config config, File inputFile) throws IllegalArgumentException {
-
-        this.config = config;
-        this.inputFile = inputFile;
-        defaultLocale = Locale.getDefault();
         configSink = System.err;
         debugSink = System.err;
+        this.config = config;
+        defaultLocale = Locale.getDefault();
 
-        String extension = FilenameUtils.getExtension(inputFile.getName());
+        this.inputFile = inputFile;
 
-        if (extension.equals("jrxml")) {
-            loadJrxml(inputFile);
+        Object inputObject = null;
+        try {
+            inputObject = JRLoader.loadObject(inputFile);
+            Boolean casterror = true;
+            try {
+                jasperReport = (JasperReport) inputObject;
+                casterror = false;
+                initialInputType = InputType.JASPER_REPORT;
+            } catch (ClassCastException ex) {
+                // nothing to do here
+            }
+            try {
+                jasperPrint = (JasperPrint) inputObject;
+                casterror = false;
+                initialInputType = InputType.JASPER_PRINT;
+            } catch (ClassCastException ex) {
+                // nothing to do here
+            }
+            if (casterror) {
+                throw new IllegalArgumentException("input file: \"" + inputFile + "\" is not of a valid type");
+            }
+        } catch (JRException ex) {
+            try {
+                jasperDesign = JRXmlLoader.load(inputFile.getAbsolutePath());
+                initialInputType = InputType.JASPER_DESIGN;
+                compile();
+            } catch (JRException ex1) {
+                throw new IllegalArgumentException("input file: \"" + inputFile + "\" is not a valid jrxml file: " + ex1.getMessage(), ex1);
+            }
         }
 
         String inputBasename = inputFile.getName().split("\\.(?=[^\\.]+$)")[0];
-        File parent = inputFile.getParentFile();
-
-        if (parent != null) {
-            this.output = new File(parent + "/" + inputBasename);
+        if (!config.hasOutput()) {
+            File parent = inputFile.getParentFile();
+            if (parent != null) {
+                this.output = parent;
+            } else {
+                this.output = new File(inputBasename);
+            }
         } else {
-            this.output = new File(inputBasename);
+            this.output = new File(config.getOutput());
         }
-    }
-
-    private void loadJrxml(File inputFile) {
-        try {
-            jasperDesign = JRXmlLoader.load(inputFile.getAbsolutePath());
-            initialInputType = InputType.JASPER_DESIGN;
-            compile();
-        } catch (JRException ex1) {
-            throw new IllegalArgumentException("input file: \"" + inputFile + "\" is not a valid jrxml file: " + ex1.getMessage(), ex1);
+        if (this.output.isDirectory()) {
+            this.output = new File(this.output, inputBasename);
         }
     }
 
     private void compile() throws JRException {
         jasperReport = JasperCompileManager.compileReport(jasperDesign);
     }
+
 
     public void compileToFile() {
         if (initialInputType == InputType.JASPER_DESIGN) {
@@ -108,13 +129,15 @@ public class Report {
         }
     }
 
+
     public void fill() throws InterruptedException {
 
         PrintStream originalStdout = System.out;
-
         try {
+            System.setOut(System.err);
             fillInternal();
-        } finally {
+        }
+        finally {
             System.out.flush();
             System.setOut(originalStdout);
         }
@@ -122,13 +145,13 @@ public class Report {
 
     private void fillInternal() throws InterruptedException {
         if (initialInputType != InputType.JASPER_PRINT) {
+
             Map<String, Object> parameters = getCmdLineReportParams();
 
             if (config.hasAskFilter()) {
                 JRParameter[] reportParams = jasperReport.getParameters();
                 parameters = promptForParams(reportParams, parameters, jasperReport.getName());
             }
-
             try {
                 if (parameters.containsKey("REPORT_LOCALE")) {
                     if (parameters.get("REPORT_LOCALE") != null) {
@@ -143,7 +166,7 @@ public class Report {
                     jasperPrint = JasperFillManager.fillReport(jasperReport, parameters, ds);
                 } else if (DsType.xml.equals(config.getDbType())) {
                     if (config.xmlXpath == null) {
-                        // try to get xPath stored in the report
+
                         config.xmlXpath = getMainDatasetQuery();
                     }
                     Db db = new Db();
@@ -151,7 +174,6 @@ public class Report {
                     jasperPrint = JasperFillManager.fillReport(jasperReport, parameters, ds);
                 } else if (DsType.json.equals(config.getDbType())) {
                     if (config.jsonQuery == null) {
-                        // try to get json query stored in the report
                         config.jsonQuery = getMainDatasetQuery();
                     }
                     Db db = new Db();
@@ -159,7 +181,6 @@ public class Report {
                     jasperPrint = JasperFillManager.fillReport(jasperReport, parameters, ds);
                 } else if (DsType.jsonql.equals(config.getDbType())) {
                     if (config.jsonQLQuery == null) {
-                        // try to get jsonql query stored in the report
                         config.jsonQLQuery = getMainDatasetQuery();
                     }
                     Db db = new Db();
@@ -171,7 +192,6 @@ public class Report {
                     jasperPrint = JasperFillManager.fillReport(jasperReport, parameters, con);
                     con.close();
                 }
-                // reset to default
                 Locale.setDefault(defaultLocale);
             } catch (SQLException ex) {
                 throw new IllegalArgumentException("Unable to connect to database: " + ex.getMessage(), ex);
@@ -180,10 +200,212 @@ public class Report {
             } catch (ClassNotFoundException e) {
                 throw new IllegalArgumentException("Unable to load driver: " + e.getMessage(), e);
             } finally {
-                // reset to default
                 Locale.setDefault(defaultLocale);
             }
         }
+    }
+
+
+    public void print() throws JRException {
+        PrintRequestAttributeSet printRequestAttributeSet = new HashPrintRequestAttributeSet();
+
+        if (config.hasCopies()){
+            printRequestAttributeSet.add(new Copies(config.getCopies().intValue()));
+        }
+        PrintServiceAttributeSet printServiceAttributeSet = new HashPrintServiceAttributeSet();
+        JRPrintServiceExporter exporter = new JRPrintServiceExporter();
+        if (config.hasReportName()) {
+            jasperPrint.setName(config.getReportName());
+        }
+        exporter.setExporterInput(new SimpleExporterInput(jasperPrint));
+        SimplePrintServiceExporterConfiguration expConfig = new SimplePrintServiceExporterConfiguration();
+        if (config.hasPrinterName()) {
+            String printerName = config.getPrinterName();
+            PrintService service = Printerlookup.getPrintservice(printerName, Boolean.TRUE, Boolean.TRUE);
+            expConfig.setPrintService(service);
+        }
+        expConfig.setPrintRequestAttributeSet(printRequestAttributeSet);
+        expConfig.setPrintServiceAttributeSet(printServiceAttributeSet);
+        expConfig.setDisplayPageDialog(Boolean.FALSE);
+        if (config.isWithPrintDialog()) {
+            setLookAndFeel();
+            expConfig.setDisplayPrintDialog(Boolean.TRUE);
+        } else {
+            expConfig.setDisplayPrintDialog(Boolean.FALSE);
+        }
+        exporter.setConfiguration(expConfig);
+        exporter.exportReport();
+    }
+
+
+    public void view() throws JRException {
+        setLookAndFeel();
+        JasperViewer.viewReport(jasperPrint, false);
+    }
+
+
+    private OutputStream getOutputStream(String suffix) throws JRException {
+        OutputStream outputStream;
+        if (this.output.getName().equals(STDOUT)) {
+            outputStream = System.out;
+        } else {
+            String outputPath = this.output.getAbsolutePath() + suffix;
+            try {
+                outputStream = new FileOutputStream(outputPath);
+            } catch (IOException ex) {
+                throw new JRException("Unable to create outputStream to " + outputPath, ex);
+            }
+        }
+        return outputStream;
+    }
+
+
+    public void exportJrprint() throws JRException {
+        JRSaver.saveObject(jasperPrint, getOutputStream(".jrprint"));
+    }
+
+
+    public void exportPdf() throws JRException {
+        if(config.hasProtect()){
+            jasperPrint.setProperty("net.sf.jasperreports.export.pdf.encrypted", "True");
+            jasperPrint.setProperty("net.sf.jasperreports.export.pdf.128.bit.key", "True");
+            jasperPrint.setProperty("net.sf.jasperreports.export.pdf.permissions.allowed", "PRINTING");
+            jasperPrint.setProperty("net.sf.jasperreports.export.pdf.user.password", config.getProtect());
+            jasperPrint.setProperty("net.sf.jasperreports.export.pdf.owner.password", config.getProtectDefault());
+        }
+        JasperExportManager.exportReportToPdfStream(jasperPrint, getOutputStream(".pdf"));
+    }
+
+
+    public void exportRtf() throws JRException {
+        JRRtfExporter exporter = new JRRtfExporter();
+        exporter.setExporterInput(new SimpleExporterInput(jasperPrint));
+        exporter.setExporterOutput(new SimpleWriterExporterOutput(getOutputStream(".rtf")));
+        exporter.exportReport();
+    }
+
+
+    public void exportDocx() throws JRException {
+        JRDocxExporter exporter = new JRDocxExporter();
+        exporter.setExporterInput(new SimpleExporterInput(jasperPrint));
+        exporter.setExporterOutput(new SimpleOutputStreamExporterOutput(getOutputStream(".docx")));
+        exporter.exportReport();
+    }
+
+
+    public void exportOdt() throws JRException {
+        JROdtExporter exporter = new JROdtExporter();
+        exporter.setExporterInput(new SimpleExporterInput(jasperPrint));
+        exporter.setExporterOutput(new SimpleOutputStreamExporterOutput(getOutputStream(".odt")));
+        exporter.exportReport();
+    }
+
+
+    public void exportHtml() throws JRException {
+        HtmlExporter exporter = new HtmlExporter();
+        exporter.setExporterInput(new SimpleExporterInput(jasperPrint));
+        exporter.setExporterOutput(new SimpleHtmlExporterOutput(getOutputStream(".html")));
+        exporter.exportReport();
+
+    }
+
+
+    public void exportXml() throws JRException {
+        JRXmlExporter exporter = new JRXmlExporter();
+        exporter.setExporterInput(new SimpleExporterInput(jasperPrint));
+        SimpleXmlExporterOutput outputStream = new SimpleXmlExporterOutput(getOutputStream(".xml"));
+        outputStream.setEmbeddingImages(false);
+        exporter.setExporterOutput(outputStream);
+        exporter.exportReport();
+    }
+
+
+    public void exportXls() throws JRException {
+        Map<String, String> dateFormats = new HashMap<String, String>();
+        dateFormats.put("EEE, MMM d, yyyy", "ddd, mmm d, yyyy");
+
+        JRXlsExporter exporter = new JRXlsExporter();
+        SimpleXlsReportConfiguration repConfig = new SimpleXlsReportConfiguration();
+        exporter.setExporterInput(new SimpleExporterInput(jasperPrint));
+        exporter.setExporterOutput(new SimpleOutputStreamExporterOutput(getOutputStream(".xls")));
+        repConfig.setDetectCellType(Boolean.TRUE);
+        repConfig.setFormatPatternsMap(dateFormats);
+        exporter.setConfiguration(repConfig);
+        exporter.exportReport();
+    }
+
+    public void exportXlsMeta() throws JRException {
+        Map<String, String> dateFormats = new HashMap<String, String>();
+        dateFormats.put("EEE, MMM d, yyyy", "ddd, mmm d, yyyy");
+
+        JRXlsMetadataExporter exporter = new JRXlsMetadataExporter();
+        SimpleXlsMetadataReportConfiguration repConfig = new SimpleXlsMetadataReportConfiguration();
+        exporter.setExporterInput(new SimpleExporterInput(jasperPrint));
+        exporter.setExporterOutput(new SimpleOutputStreamExporterOutput(getOutputStream(".xls")));
+        repConfig.setDetectCellType(Boolean.TRUE);
+        repConfig.setFormatPatternsMap(dateFormats);
+        exporter.setConfiguration(repConfig);
+        exporter.exportReport();
+    }
+
+
+    public void exportXlsx() throws JRException {
+        Map<String, String> dateFormats = new HashMap<String, String>();
+        dateFormats.put("EEE, MMM d, yyyy", "ddd, mmm d, yyyy");
+
+        JRXlsxExporter exporter = new JRXlsxExporter();
+        SimpleXlsxReportConfiguration repConfig = new SimpleXlsxReportConfiguration();
+        exporter.setExporterInput(new SimpleExporterInput(jasperPrint));
+        exporter.setExporterOutput(new SimpleOutputStreamExporterOutput(getOutputStream(".xlsx")));
+        repConfig.setDetectCellType(Boolean.TRUE);
+        repConfig.setFormatPatternsMap(dateFormats);
+        exporter.setConfiguration(repConfig);
+        exporter.exportReport();
+    }
+
+
+    public void exportCsv() throws JRException {
+        JRCsvExporter exporter = new JRCsvExporter();
+        SimpleCsvExporterConfiguration configuration = new SimpleCsvExporterConfiguration();
+        configuration.setFieldDelimiter(config.getOutFieldDel());
+        exporter.setConfiguration(configuration);
+        exporter.setExporterInput(new SimpleExporterInput(jasperPrint));
+        exporter.setExporterOutput(new SimpleWriterExporterOutput(getOutputStream(".csv"), config.getOutCharset()));
+        exporter.exportReport();
+    }
+
+    public void exportCsvMeta() throws JRException {
+        JRCsvMetadataExporter exporter = new JRCsvMetadataExporter();
+        SimpleCsvMetadataExporterConfiguration configuration = new SimpleCsvMetadataExporterConfiguration();
+        configuration.setFieldDelimiter(config.getOutFieldDel());
+        exporter.setConfiguration(configuration);
+        exporter.setExporterInput(new SimpleExporterInput(jasperPrint));
+        exporter.setExporterOutput(new SimpleWriterExporterOutput(getOutputStream(".csv"), config.getOutCharset()));
+        exporter.exportReport();
+    }
+
+
+    public void exportOds() throws JRException {
+        JROdsExporter exporter = new JROdsExporter();
+        exporter.setExporterInput(new SimpleExporterInput(jasperPrint));
+        exporter.setExporterOutput(new SimpleOutputStreamExporterOutput(getOutputStream(".ods")));
+        exporter.exportReport();
+    }
+
+
+    public void exportPptx() throws JRException {
+        JRPptxExporter exporter = new JRPptxExporter();
+        exporter.setExporterInput(new SimpleExporterInput(jasperPrint));
+        exporter.setExporterOutput(new SimpleOutputStreamExporterOutput(getOutputStream(".pptx")));
+        exporter.exportReport();
+    }
+
+
+    public void exportXhtml() throws JRException {
+        HtmlExporter exporter = new HtmlExporter();
+        exporter.setExporterInput(new SimpleExporterInput(jasperPrint));
+        exporter.setExporterOutput(new SimpleHtmlExporterOutput(getOutputStream(".x.html")));
+        exporter.exportReport();
     }
 
     private Map<String, Object> getCmdLineReportParams() {
@@ -214,35 +436,28 @@ public class Report {
                 JRParameter reportParam = jrParameters.get(paramName);
 
                 try {
-
-                    if (Date.class.equals(reportParam.getValueClass())) {
+                    if (Date.class
+                            .equals(reportParam.getValueClass())) {
                         DateFormat dateFormat = new SimpleDateFormat("yy-MM-dd");
                         parameters.put(paramName, (Date) dateFormat.parse(paramValue));
-
-                    } else if (Image.class.equals(reportParam.getValueClass())) {
-
-                        Image image = Toolkit
-                                .getDefaultToolkit()
-                                .createImage(JRLoader.loadBytes(new File(paramValue)));
-
+                    } else if (Image.class
+                            .equals(reportParam.getValueClass())) {
+                        Image image =
+                                Toolkit.getDefaultToolkit().createImage(
+                                        JRLoader.loadBytes(new File(paramValue)));
                         MediaTracker traker = new MediaTracker(new Panel());
                         traker.addImage(image, 0);
-
                         try {
                             traker.waitForID(0);
                         } catch (Exception e) {
                             throw new IllegalArgumentException(
                                     "Image tracker error: " + e.getMessage(), e);
                         }
-
                         parameters.put(paramName, image);
-
-                    } else if (Locale.class.equals(reportParam.getValueClass())) {
-
+                    } else if (Locale.class
+                            .equals(reportParam.getValueClass())) {
                         parameters.put(paramName, LocaleUtils.toLocale(paramValue));
-
                     } else {
-                        // handle generic parameters with string constructor
                         try {
                             parameters.put(paramName,
                                     reportParam.getValueClass()
@@ -272,7 +487,7 @@ public class Report {
                                     + paramName + "' of type '"
                                     + reportParam.getValueClass().getName()
                                     + " with value '" + paramValue
-                                    + "' is not supported by Report!", ex);
+                                    + "' is not supported by JasperStarter!", ex);
                         }
                     }
                 } catch (NumberFormatException e) {
@@ -285,6 +500,22 @@ public class Report {
             }
         }
         return parameters;
+    }
+
+
+    public static void setLookAndFeel() {
+        try {
+            UIManager.setLookAndFeel(
+                    UIManager.getSystemLookAndFeelClassName());
+        } catch (UnsupportedLookAndFeelException e) {
+            Logger.getLogger(Report.class.getName()).log(Level.SEVERE, null, e);
+        } catch (ClassNotFoundException e) {
+            Logger.getLogger(Report.class.getName()).log(Level.SEVERE, null, e);
+        } catch (InstantiationException e) {
+            Logger.getLogger(Report.class.getName()).log(Level.SEVERE, null, e);
+        } catch (IllegalAccessException e) {
+            Logger.getLogger(Report.class.getName()).log(Level.SEVERE, null, e);
+        }
     }
 
     private Map<String, Object> promptForParams(JRParameter[] reportParams, Map<String, Object> params, String reportName) throws InterruptedException {
@@ -319,216 +550,6 @@ public class Report {
         return params;
     }
 
-    public String getMainDatasetQuery() throws IllegalArgumentException {
-        if  (initialInputType == InputType.JASPER_DESIGN) {
-            return jasperDesign.getMainDesignDataset().getQuery().getText();
-        } else if (initialInputType == InputType.JASPER_REPORT) {
-            return jasperReport.getMainDataset().getQuery().getText();
-        } else {
-            throw new IllegalArgumentException("No query for input type: " + initialInputType);
-        }
-    }
-
-    public static void setLookAndFeel() {
-        try {
-            // Set System L&F
-            UIManager.setLookAndFeel(
-                    UIManager.getSystemLookAndFeelClassName());
-        } catch (UnsupportedLookAndFeelException e) {
-            Logger.getLogger(Report.class.getName()).log(Level.SEVERE, null, e);
-        } catch (ClassNotFoundException e) {
-            Logger.getLogger(Report.class.getName()).log(Level.SEVERE, null, e);
-        } catch (InstantiationException e) {
-            Logger.getLogger(Report.class.getName()).log(Level.SEVERE, null, e);
-        } catch (IllegalAccessException e) {
-            Logger.getLogger(Report.class.getName()).log(Level.SEVERE, null, e);
-        }
-    }
-
-    public void exportPdf() throws JRException {
-        if(config.hasProtect()){
-            jasperPrint.setProperty("net.sf.jasperreports.export.pdf.encrypted", "True");
-            jasperPrint.setProperty("net.sf.jasperreports.export.pdf.128.bit.key", "True");
-            jasperPrint.setProperty("net.sf.jasperreports.export.pdf.permissions.allowed", "PRINTING");
-            jasperPrint.setProperty("net.sf.jasperreports.export.pdf.user.password", config.getProtect());
-            jasperPrint.setProperty("net.sf.jasperreports.export.pdf.owner.password", config.getProtectDefault());
-        }
-
-        JasperExportManager.exportReportToPdfStream(jasperPrint, getOutputStream(".pdf"));
-    }
-
-    public void exportDocx() throws JRException {
-        JRDocxExporter exporter = new JRDocxExporter();
-        exporter.setExporterInput(new SimpleExporterInput(jasperPrint));
-        exporter.setExporterOutput(new SimpleOutputStreamExporterOutput(getOutputStream(".docx")));
-        exporter.exportReport();
-    }
-
-    public void exportOdt() throws JRException {
-        JROdtExporter exporter = new JROdtExporter();
-        exporter.setExporterInput(new SimpleExporterInput(jasperPrint));
-        exporter.setExporterOutput(new SimpleOutputStreamExporterOutput(getOutputStream(".odt")));
-        exporter.exportReport();
-    }
-
-    public void exportRtf() throws JRException {
-        JRRtfExporter exporter = new JRRtfExporter();
-        exporter.setExporterInput(new SimpleExporterInput(jasperPrint));
-        exporter.setExporterOutput(new SimpleWriterExporterOutput(getOutputStream(".rtf")));
-        exporter.exportReport();
-    }
-
-    public void exportHtml() throws JRException {
-        HtmlExporter exporter = new HtmlExporter();
-        exporter.setExporterInput(new SimpleExporterInput(jasperPrint));
-        exporter.setExporterOutput(new SimpleHtmlExporterOutput(getOutputStream(".html")));
-        exporter.exportReport();
-    }
-
-    public void exportXml() throws JRException {
-        JRXmlExporter exporter = new JRXmlExporter();
-        exporter.setExporterInput(new SimpleExporterInput(jasperPrint));
-        SimpleXmlExporterOutput outputStream = new SimpleXmlExporterOutput(getOutputStream(".xml"));
-        outputStream.setEmbeddingImages(false);
-        exporter.setExporterOutput(outputStream);
-        exporter.exportReport();
-    }
-
-    public void exportXls() throws JRException {
-        Map<String, String> dateFormats = new HashMap<String, String>();
-        dateFormats.put("EEE, MMM d, yyyy", "ddd, mmm d, yyyy");
-
-        JRXlsExporter exporter = new JRXlsExporter();
-        SimpleXlsReportConfiguration repConfig = new SimpleXlsReportConfiguration();
-        exporter.setExporterInput(new SimpleExporterInput(jasperPrint));
-        exporter.setExporterOutput(new SimpleOutputStreamExporterOutput(getOutputStream(".xls")));
-        repConfig.setDetectCellType(Boolean.TRUE);
-        repConfig.setFormatPatternsMap(dateFormats);
-        exporter.setConfiguration(repConfig);
-        exporter.exportReport();
-    }
-
-    public void exportXlsMeta() throws JRException {
-        Map<String, String> dateFormats = new HashMap<String, String>();
-        dateFormats.put("EEE, MMM d, yyyy", "ddd, mmm d, yyyy");
-        JRXlsMetadataExporter exporter = new JRXlsMetadataExporter();
-        SimpleXlsMetadataReportConfiguration repConfig = new SimpleXlsMetadataReportConfiguration();
-        exporter.setExporterInput(new SimpleExporterInput(jasperPrint));
-        exporter.setExporterOutput(new SimpleOutputStreamExporterOutput(getOutputStream(".xls")));
-        repConfig.setDetectCellType(Boolean.TRUE);
-        repConfig.setFormatPatternsMap(dateFormats);
-        exporter.setConfiguration(repConfig);
-        exporter.exportReport();
-    }
-
-    public void exportXlsx() throws JRException {
-        Map<String, String> dateFormats = new HashMap<String, String>();
-        dateFormats.put("EEE, MMM d, yyyy", "ddd, mmm d, yyyy");
-
-        JRXlsxExporter exporter = new JRXlsxExporter();
-        SimpleXlsxReportConfiguration repConfig = new SimpleXlsxReportConfiguration();
-        exporter.setExporterInput(new SimpleExporterInput(jasperPrint));
-        exporter.setExporterOutput(new SimpleOutputStreamExporterOutput(getOutputStream(".xlsx")));
-        repConfig.setDetectCellType(Boolean.TRUE);
-        repConfig.setFormatPatternsMap(dateFormats);
-        exporter.setConfiguration(repConfig);
-        exporter.exportReport();
-    }
-
-    public void exportCsv() throws JRException {
-        JRCsvExporter exporter = new JRCsvExporter();
-        SimpleCsvExporterConfiguration configuration = new SimpleCsvExporterConfiguration();
-        configuration.setFieldDelimiter(config.getOutFieldDel());
-        exporter.setConfiguration(configuration);
-        exporter.setExporterInput(new SimpleExporterInput(jasperPrint));
-        exporter.setExporterOutput(new SimpleWriterExporterOutput(getOutputStream(".csv"), config.getOutCharset()));
-        exporter.exportReport();
-    }
-
-    public void exportCsvMeta() throws JRException {
-        JRCsvMetadataExporter exporter = new JRCsvMetadataExporter();
-        SimpleCsvMetadataExporterConfiguration configuration = new SimpleCsvMetadataExporterConfiguration();
-        configuration.setFieldDelimiter(config.getOutFieldDel());
-        exporter.setConfiguration(configuration);
-        exporter.setExporterInput(new SimpleExporterInput(jasperPrint));
-        exporter.setExporterOutput(new SimpleWriterExporterOutput(getOutputStream(".csv"), config.getOutCharset()));
-        exporter.exportReport();
-    }
-
-    public void exportOds() throws JRException {
-        JROdsExporter exporter = new JROdsExporter();
-        exporter.setExporterInput(new SimpleExporterInput(jasperPrint));
-        exporter.setExporterOutput(new SimpleOutputStreamExporterOutput(getOutputStream(".ods")));
-        exporter.exportReport();
-    }
-
-    public void exportPptx() throws JRException {
-        JRPptxExporter exporter = new JRPptxExporter();
-        exporter.setExporterInput(new SimpleExporterInput(jasperPrint));
-        exporter.setExporterOutput(new SimpleOutputStreamExporterOutput(getOutputStream(".pptx")));
-        exporter.exportReport();
-    }
-
-    public void exportXhtml() throws JRException {
-        HtmlExporter exporter = new HtmlExporter();
-        exporter.setExporterInput(new SimpleExporterInput(jasperPrint));
-        exporter.setExporterOutput(new SimpleHtmlExporterOutput(getOutputStream(".x.html")));
-        exporter.exportReport();
-    }
-
-    public void exportJrprint() throws JRException {
-        JRSaver.saveObject(jasperPrint, getOutputStream(".jrprint"));
-    }
-
-    public void view() throws JRException {
-        setLookAndFeel();
-        JasperViewer.viewReport(jasperPrint, false);
-    }
-
-    public void print() throws JRException {
-        PrintRequestAttributeSet printRequestAttributeSet = new HashPrintRequestAttributeSet();
-        if (config.hasCopies()){
-            printRequestAttributeSet.add(new Copies(config.getCopies().intValue()));
-        }
-        PrintServiceAttributeSet printServiceAttributeSet = new HashPrintServiceAttributeSet();
-        JRPrintServiceExporter exporter = new JRPrintServiceExporter();
-        if (config.hasReportName()) {
-            jasperPrint.setName(config.getReportName());
-        }
-        exporter.setExporterInput(new SimpleExporterInput(jasperPrint));
-        SimplePrintServiceExporterConfiguration expConfig = new SimplePrintServiceExporterConfiguration();
-        if (config.hasPrinterName()) {
-            String printerName = config.getPrinterName();
-            PrintService service = Printerlookup.getPrintservice(printerName, Boolean.TRUE, Boolean.TRUE);
-            expConfig.setPrintService(service);
-        }
-        expConfig.setPrintRequestAttributeSet(printRequestAttributeSet);
-        expConfig.setPrintServiceAttributeSet(printServiceAttributeSet);
-        expConfig.setDisplayPageDialog(Boolean.FALSE);
-        if (config.isWithPrintDialog()) {
-            setLookAndFeel();
-            expConfig.setDisplayPrintDialog(Boolean.TRUE);
-        } else {
-            expConfig.setDisplayPrintDialog(Boolean.FALSE);
-        }
-        exporter.setConfiguration(expConfig);
-        exporter.exportReport();
-    }
-
-    private OutputStream getOutputStream(String suffix) throws JRException {
-        OutputStream outputStream;
-        if (this.output.getName().equals(STDOUT)) {
-            outputStream = System.out;
-        } else {
-            String outputPath = this.output.getAbsolutePath() + suffix;
-            try {
-                outputStream = new FileOutputStream(outputPath);
-            } catch (IOException ex) {
-                throw new JRException("Unable to create outputStream to " + outputPath, ex);
-            }
-        }
-        return outputStream;
-    }
 
     public JRParameter[] getReportParameters() throws IllegalArgumentException {
         JRParameter[] returnval = null;
@@ -540,5 +561,15 @@ public class Report {
                             + inputFile.getAbsolutePath());
         }
         return returnval;
+    }
+
+    public String getMainDatasetQuery() throws IllegalArgumentException {
+        if  (initialInputType == InputType.JASPER_DESIGN) {
+            return jasperDesign.getMainDesignDataset().getQuery().getText();
+        } else if (initialInputType == InputType.JASPER_REPORT) {
+            return jasperReport.getMainDataset().getQuery().getText();
+        } else {
+            throw new IllegalArgumentException("No query for input type: " + initialInputType);
+        }
     }
 }

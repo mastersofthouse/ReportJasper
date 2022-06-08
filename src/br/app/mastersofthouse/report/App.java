@@ -9,6 +9,7 @@ import net.sf.jasperreports.engine.JRParameter;
 import net.sourceforge.argparse4j.inf.Argument;
 import net.sourceforge.argparse4j.inf.ArgumentParser;
 import net.sourceforge.argparse4j.inf.ArgumentParserException;
+import org.apache.commons.io.FilenameUtils;
 
 import javax.print.PrintService;
 import javax.print.PrintServiceLookup;
@@ -191,7 +192,24 @@ public class App {
         }
 
         if (!inputFile.exists()) {
-            throw new IllegalArgumentException("Error: file not found: " + inputFile.getAbsolutePath());
+
+            if(FilenameUtils.getExtension(inputFile.getAbsolutePath()).equals("jasper")){
+
+                String input = inputFile.getAbsolutePath();
+                input = input.replace(".jasper", ".jrxml");
+
+                File file = new File(input);
+
+                if(file.exists()){
+                    return file;
+                }
+
+            }else if(FilenameUtils.getExtension(inputFile.getAbsolutePath()).equals("jrxml")){
+                throw new IllegalArgumentException("Error: file not found: " + inputFile.getAbsolutePath());
+            }else {
+                throw new IllegalArgumentException("Error: file not found: " + inputFile.getAbsolutePath());
+            }
+
         } else if (inputFile.isDirectory()) {
             throw new IllegalArgumentException("Error: " + inputFile.getAbsolutePath() + " is a directory, file needed");
         }

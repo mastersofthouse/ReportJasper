@@ -17,6 +17,7 @@ import java.io.File;
 import java.io.IOException;
 import java.util.HashMap;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 
 public class App {
@@ -80,6 +81,10 @@ public class App {
     private void executeCommand(App app, Config config) throws JRException, InterruptedException {
 
         try {
+
+            if (config.hasLocale()) {
+                Locale.setDefault(config.getLocale());
+            }
 
             switch (Command.getCommand(config.getCommand())) {
                 case COMPILE:

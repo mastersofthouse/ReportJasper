@@ -67,6 +67,7 @@ public class Report {
 
         Object inputObject = null;
         try {
+
             inputObject = JRLoader.loadObject(inputFile);
             Boolean casterror = true;
             try {
@@ -457,6 +458,16 @@ public class Report {
                     } else if (Locale.class
                             .equals(reportParam.getValueClass())) {
                         parameters.put(paramName, LocaleUtils.toLocale(paramValue));
+                    }else if(Collection.class.equals(reportParam.getValueClass())){
+
+                        String[] values = paramValue.split(",");
+                        ArrayList<String> result = new ArrayList<String>();
+
+                        for (int i = 0; i < values.length; i++) {
+                            result.add(values[i].toString().trim());
+                        }
+                        parameters.put(paramName, result);
+
                     } else {
                         try {
                             parameters.put(paramName,

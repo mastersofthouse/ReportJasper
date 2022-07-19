@@ -7,5 +7,8 @@ Class-Path: ecj-3.21.0.jar jcommon-1.0.23.jar itext-2.1.7.js9.jar stax2-
  s-6.19.1.jar commons-logging-1.1.1.jar commons-beanutils-1.9.4.jar jack
  son-databind-2.13.1.jar commons-collections4-4.2.jar commons-collection
  s-3.2.2.jar jackson-annotations-2.13.1.jar jackson-dataformat-xml-2.13.
- 1.jar jasperreports-functions-6.19.1.jar
-
+ 1.jar jasperreports-functions-6.19.1.jar barcode4j-2.1.jar batik-anim-1.14.jar
+ batik-awt-util-1.4.jar batik-bridge-1.14.jar batik-constants-1.14.jar batik-css-1.14.jar
+ batik-dom-1.14.jar batik-ext-1.14.jar batik-gvt-1.14.jar batik-i18n-1.14.jar batik-parser-1.14.jar
+ batik-script-1.14.jar batik-shared-resources-1.14.jar batik-svg-dom-1.14.jar batik-svggen-1.14.jar
+ batik-util-1.14.jar batik-xml-1.14.jar

@@ -73,6 +73,7 @@ public class App {
     private void loadJdbc() {
         try {
             ApplicationClasspath.addJars("../jdbc");
+            ApplicationClasspath.addJars("../lib");
         } catch (IOException e) {
             throw new RuntimeException(e);
         }
